@@ -281,6 +281,8 @@ extern "C" {
 			_In_ PCONTEXT ThreadContext, 
 			_In_ KPROCESSOR_MODE Mode
 		);
+
+	PVOID NTAPI PsGetProcessSectionBaseAddress(PEPROCESS Process);
 }
 
 #endif

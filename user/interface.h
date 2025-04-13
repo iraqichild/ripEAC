@@ -61,18 +61,18 @@ public:
 private:
 	ULONG processPid{};
 	PVOID deviceHandle{};
-	const wchar_t* deviceName = L"\\\\.\\dsdaadfAD";
+	const wchar_t* deviceName = L"\\\\.\\ripEAC";
 
 public:
 	BOOLEAN Attach(const wchar_t* processName);
 	BOOLEAN Detach();
 
-    BOOLEAN VirtualAllocEx(PVOID* baseAddress, SIZE_T* regionSize, ULONG allocationType, ULONG protectionType);
-    BOOLEAN VirtualFreeEx(PVOID* baseAddress, SIZE_T* regionSize, ULONG freeType);
-    BOOLEAN ReadProcessMemory(PVOID address, PVOID buffer, SIZE_T size);
-    BOOLEAN WriteProcessMemory(PVOID address, PVOID buffer, SIZE_T size);
-    BOOLEAN VirtualProtectEx(PVOID* baseAddress, SIZE_T* regionSize, ULONG newProtection, PULONG oldProtection);
-    BOOLEAN CreateRemoteThread(PVOID startAddress);
+	BOOLEAN VirtualAllocEx(PVOID* baseAddress, SIZE_T* regionSize, ULONG allocationType, ULONG protectionType);
+	BOOLEAN VirtualFreeEx(PVOID* baseAddress, SIZE_T* regionSize, ULONG freeType);
+	BOOLEAN ReadProcessMemory(PVOID address, PVOID buffer, SIZE_T size);
+	BOOLEAN WriteProcessMemory(PVOID address, PVOID buffer, SIZE_T size);
+	BOOLEAN VirtualProtectEx(PVOID* baseAddress, SIZE_T* regionSize, ULONG newProtection, PULONG oldProtection);
+	BOOLEAN CreateRemoteThread(PVOID startAddress);
 private:
 	BOOLEAN syscall(DWORD ioctlCode, LPVOID inBuffer, DWORD inBufferSize, LPVOID outBuffer, DWORD outBufferSize);
 };

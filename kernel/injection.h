@@ -159,6 +159,8 @@ NTSTATUS ReadWriteVirtualMemory(ReadWriteVirtual_* Params)
             Params->size,
             KernelMode,
             &bytesTransferred
+       
+       
         );
     }
     else
@@ -256,7 +258,7 @@ NTSTATUS CallFunctionViaThreadHijacking(ThreadHijack_* Params)
         return STATUS_INVALID_PARAMETER;
     }
 
-    //  SuspendThreadManually(pThread);
+  //  SuspendThreadManually(pThread);
 
     CONTEXT threadContext = { 0 };
     threadContext.ContextFlags = CONTEXT_ALL;
@@ -286,7 +288,7 @@ NTSTATUS CallFunctionViaThreadHijacking(ThreadHijack_* Params)
         return ntStatus;
     }
 
-   // UnsuspendThreadManually(pThread);
+   /// UnsuspendThreadManually(pThread);
 
     ObDereferenceObject(pThread);
     ObDereferenceObject(pProcess);

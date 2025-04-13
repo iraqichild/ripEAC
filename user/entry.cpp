@@ -407,7 +407,7 @@ BOOLEAN CInjector::MapDll(CDriver& Driver, PVOID Module, SIZE_T ModuleSize) {
 
 int main() {
     CDriver driver;
-    if (!driver.Attach(L"Unturned.exe")) {
+    if (!driver.Attach(L"notepad.exe")) {
         std::wcout << L"Failed to attach to target process\n";
         std::cin.get();
         return 1;
