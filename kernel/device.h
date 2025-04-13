@@ -3,8 +3,19 @@
 
 #include <ntifs.h>
 #include <ntddk.h>
-#include <wdmsec.h>
 #include "imports.h"
+
+typedef NTSTATUS(*PFN_WDMLIB_IO_CREATE_DEVICE_SECURE)(
+    PDRIVER_OBJECT DriverObject,
+    ULONG DeviceExtensionSize,
+    PUNICODE_STRING DeviceName,
+    DEVICE_TYPE DeviceType,
+    ULONG DeviceCharacteristics,
+    BOOLEAN Exclusive,
+    PCUNICODE_STRING DefaultSDDLString,
+    LPCGUID DeviceClassGuid,
+    PDEVICE_OBJECT* DeviceObject
+    );
 
 UNICODE_STRING drvName = { 0 };
 UNICODE_STRING drvSymLink = { 0 };
@@ -29,6 +40,14 @@ NTSTATUS createdevice(_In_ PDRIVER_OBJECT driver_obj, _Out_ PDEVICE_OBJECT* devi
     drvName = unicodeStr(L"\\Device\\ripEAC");
     drvSymLink = unicodeStr(L"\\DosDevices\\ripEAC");
     drvSDDL = unicodeStr(DEVICE_SDDL);
+    UNICODE_STRING funcName = unicodeStr(L"IoCreateDeviceSecure");
+
+    PFN_WDMLIB_IO_CREATE_DEVICE_SECURE IoCreateDeviceSecure =
+        (PFN_WDMLIB_IO_CREATE_DEVICE_SECURE)MmGetSystemRoutineAddress(&funcName);
+
+    if (IoCreateDeviceSecure == NULL) {
+        return STATUS_NOT_FOUND;
+    }
 
     status = IoCreateDeviceSecure(
         driver_obj,              // Driver object
@@ -42,7 +61,6 @@ NTSTATUS createdevice(_In_ PDRIVER_OBJECT driver_obj, _Out_ PDEVICE_OBJECT* devi
         &dev_obj                 // Output device object
     );
 
-  
     if (!NT_SUCCESS(status))
     {
         return status;

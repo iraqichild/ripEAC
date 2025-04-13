@@ -6,6 +6,7 @@
 #include <ntdef.h>
 #include <windef.h>
 #include <intrin.h>
+#include <cstdint>
 
 typedef enum _SYSTEM_INFORMATION_CLASS {
 	SystemBasicInformation = 0x0,
@@ -177,22 +178,35 @@ UNICODE_STRING unicodeStr(const LPWSTR str)
 	return x;
 }
 
-extern "C" {
-	//NTSYSAPI // link aginst wdmsec.lib
-	//	NTSTATUS
-	//	__stdcall
-	//	IoCreateDeviceSecure(
-	//		IN PDRIVER_OBJECT DriverObject,
-	//		IN ULONG DeviceExtensionSize,
-	//		IN PUNICODE_STRING DeviceName OPTIONAL,
-	//		IN DEVICE_TYPE DeviceType,
-	//		IN ULONG DeviceCharacteristics,
-	//		IN BOOLEAN Exclusive,
-	//		IN PCUNICODE_STRING DefaultSDDLString,
-	//		IN LPCGUID DeviceClassGuid OPTIONAL,
-	//		OUT PDEVICE_OBJECT* DeviceObject
-	//	);
+inline uintptr_t get_kernel_base() {
+	uintptr_t idt_base = *reinterpret_cast<uintptr_t*>(__readgsqword(0x18) + 0x38);
+	uintptr_t base_addr = *reinterpret_cast<uintptr_t*>(reinterpret_cast<uint8_t*>(idt_base) + 4) & 0xFFFFFFFFFFFFF000;
 
+start:
+	uintptr_t index = 0;
+
+	while (true) {
+		if (*reinterpret_cast<uint8_t*>(base_addr + index) == 0x48 &&
+			*reinterpret_cast<uint8_t*>(base_addr + index + 1) == 0x8D &&
+			*reinterpret_cast<uint8_t*>(base_addr + index + 2) == 0x1D &&
+			*reinterpret_cast<uint8_t*>(base_addr + index + 6) == 0xFF) { // 48 8D 1D ?? ?? ?? FF
+
+			uint32_t offset = *reinterpret_cast<uint32_t*>(base_addr + index + 3);
+
+			if (((static_cast<uint16_t>(base_addr) + static_cast<uint16_t>(index) + static_cast<uint16_t>(offset) + 7) & 0xFFF) == 0)
+				return base_addr & 0xFFFFFFFF00000000 | static_cast<unsigned int>(index + base_addr + offset + 7);
+		}
+
+		if (++index == 4089) {
+			base_addr -= 0x1000;
+			goto start;
+		}
+	}
+
+	return 0x0;
+}
+
+extern "C" {
 	NTSYSAPI
 		NTSTATUS
 		NTAPI

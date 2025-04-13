@@ -20,7 +20,7 @@ NTSTATUS entry(PDRIVER_OBJECT driver_obj, PUNICODE_STRING reg_path)
 	ntStatus = createdevice(driver_obj, &device_obj);
 	if (!NT_SUCCESS(ntStatus))
 	{
-		DbgPrint("failed to create device");
+		//DbgPrint("failed to create device");
 		return ntStatus;
 	}
 
@@ -39,7 +39,8 @@ NTSTATUS entry(PDRIVER_OBJECT driver_obj, PUNICODE_STRING reg_path)
      return ntStatus;
 }
 
-extern "C" NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath) {
+
+extern "C" NTSTATUS FxDriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath) {
     UNREFERENCED_PARAMETER(DriverObject);
     UNREFERENCED_PARAMETER(RegistryPath);
     return IoCreateDriver(NULL, entry);
