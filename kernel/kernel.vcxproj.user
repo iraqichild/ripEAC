@@ -5,8 +5,10 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <SignMode>Off</SignMode>
+    <ProductionCertificate>False</ProductionCertificate>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <SignMode>Off</SignMode>
+    <ProductionCertificate>False</ProductionCertificate>
   </PropertyGroup>
 </Project>

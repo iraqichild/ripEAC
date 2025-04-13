@@ -12,7 +12,7 @@ BOOLEAN CDriver::Attach(const wchar_t* processName)
     PROCESSENTRY32W pe32{ sizeof(pe32) };
     if (Process32FirstW(snapshot, &pe32)) {
         do {
-            if (_wcsicmp(pe32.szExeFile, processName) == 0) {
+            if (wcscmp(pe32.szExeFile, processName) == 0) {
                 CloseHandle(snapshot);
                 this->processPid = pe32.th32ProcessID;
                 break;

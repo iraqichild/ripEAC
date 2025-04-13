@@ -2,6 +2,8 @@
 #include <tlhelp32.h>
 #include <iostream>
 #include <vector>
+#include <stdio.h>
+#include <stdlib.h>
 #include <fstream>
 
 struct InjectionStruct
@@ -20,6 +22,16 @@ struct InjectionStruct
 class CInjector
 {
 public:
+    void vLog(const char* const _Format, ...)
+    {
+        va_list args;
+        va_start(args, _Format);
+        printf("[ripEAC] ");
+        vprintf(_Format, args);
+        printf("\n");
+        va_end(args);
+    }
+
     IMAGE_DOS_HEADER* GetImageDosHeader(InjectionStruct& Module);
     IMAGE_NT_HEADERS* GetImageNtHeader(InjectionStruct& Module);
     BOOLEAN FixModuleSections(InjectionStruct& Module);
@@ -57,7 +69,6 @@ BOOLEAN CInjector::FixModuleSections(InjectionStruct& Module)
   
     return true;
 }
-
 BOOLEAN CInjector::FixModuleReallocations(InjectionStruct& Module) {
     bool is_64bit = Module.pNtHeader->OptionalHeader.Magic == IMAGE_NT_OPTIONAL_HDR64_MAGIC;
     if (Module.pNtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].VirtualAddress) {
@@ -106,7 +117,6 @@ BOOLEAN CInjector::FixModuleReallocations(InjectionStruct& Module) {
     }
     return TRUE;
 }
-
 BOOLEAN CInjector::FixModuleIAT(InjectionStruct& Module) {
     if (Module.pNtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress) {
         IMAGE_IMPORT_DESCRIPTOR* pImportDesc = reinterpret_cast<IMAGE_IMPORT_DESCRIPTOR*>(
@@ -197,7 +207,6 @@ BOOLEAN CInjector::FixModuleIAT(InjectionStruct& Module) {
     }
     return TRUE;
 }
-
 BOOLEAN CInjector::CleanModuleSections(InjectionStruct& Module) {
     IMAGE_SECTION_HEADER* sectionHeader = IMAGE_FIRST_SECTION(Module.pNtHeader);
     static const char* uselessSections[] = { ".reloc", ".rsrc", ".edata", ".idata", ".pdata" };
@@ -225,12 +234,10 @@ BOOLEAN CInjector::CleanModuleSections(InjectionStruct& Module) {
     }
     return TRUE;
 }
-
 BOOLEAN CInjector::CleanModulePeHeader(InjectionStruct& Module) {
     char CleanBuffer = 0;
     return Module.Driver.WriteProcessMemory(Module.RemoteModule, &CleanBuffer, Module.pNtHeader->OptionalHeader.SizeOfHeaders);
 }
-
 PVOID CInjector::GetModuleExportFunction(InjectionStruct& Module, const char* ExportName) {
     if (Module.pNtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress) {
         IMAGE_EXPORT_DIRECTORY* pExportDir = reinterpret_cast<IMAGE_EXPORT_DIRECTORY*>(
@@ -284,7 +291,6 @@ PVOID CInjector::GetModuleExportFunction(InjectionStruct& Module, const char* Ex
     }
     return nullptr;
 }
-
 BOOLEAN CInjector::LoadFileIntoMemory(const wchar_t* FilePath, PVOID& FileBytes, SIZE_T& FileSize) {
     if (GetFileAttributes(FilePath) == INVALID_FILE_ATTRIBUTES) {
         return FALSE;
@@ -319,10 +325,11 @@ BOOLEAN CInjector::LoadFileIntoMemory(const wchar_t* FilePath, PVOID& FileBytes,
 
 BOOLEAN CInjector::MapDll(CDriver& Driver, PVOID Module, SIZE_T ModuleSize) {
     if (!Module || !ModuleSize || !Driver.attached) {
-        printf("MapDll failed: Invalid input (Module=%p, ModuleSize=%zu, attached=%d)\n", Module, ModuleSize, Driver.attached);
+        vLog("invaild module");
         return FALSE;
     }
-    printf("MapDll: Input validated\n");
+    
+    vLog("vaild input");
 
     InjectionStruct Injection{};
     Injection.Driver = Driver;
@@ -332,107 +339,145 @@ BOOLEAN CInjector::MapDll(CDriver& Driver, PVOID Module, SIZE_T ModuleSize) {
     Injection.pNtHeader = GetImageNtHeader(Injection);
 
     if (Injection.pDosHeader->e_magic != IMAGE_DOS_SIGNATURE) {
-        printf("MapDll failed: Invalid DOS signature\n");
+        vLog("invaild dos header");
         return FALSE;
     }
-    printf("MapDll: DOS header validated\n");
+
 
     if (Injection.pNtHeader->Signature != IMAGE_NT_SIGNATURE || Injection.pNtHeader->OptionalHeader.SizeOfImage == 0) {
-        printf("MapDll failed: Invalid NT signature or image size\n");
+        vLog("invaild ntheader or size");
         return FALSE;
     }
-    printf("MapDll: NT header validated\n");
 
-    PVOID baseAddress = nullptr;
+    vLog("vaild module");
+
     SIZE_T regionSize = Injection.pNtHeader->OptionalHeader.SizeOfImage;
-    if (!Injection.Driver.VirtualAllocEx(&baseAddress, &regionSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE)) {
-        printf("MapDll failed: VirtualAllocEx failed\n");
+    if (!Injection.Driver.VirtualAllocEx(&Injection.RemoteModule, &regionSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE)) {
+        vLog("failed to allocate remote memory");
         return FALSE;
     }
-    Injection.RemoteModule = baseAddress;
-    printf("MapDll: Allocated memory at %p\n", baseAddress);
+
+    vLog("allocated remote memory -> %p", Injection.RemoteModule);
 
     if (!Injection.Driver.WriteProcessMemory(Injection.RemoteModule, Module, ModuleSize)) {
-        printf("MapDll failed: WriteProcessMemory failed\n");
+        vLog("failed to write module");
         Injection.Driver.VirtualFreeEx(&Injection.RemoteModule, &regionSize, MEM_RELEASE);
         return FALSE;
     }
-    printf("MapDll: Wrote module to remote memory\n");
+   
+    vLog("wrote module to -> %p", Injection.RemoteModule);
 
     if (!FixModuleSections(Injection)) {
-        printf("MapDll failed: FixModuleSections failed\n");
+        vLog("failed to fix sections");
         Injection.Driver.VirtualFreeEx(&Injection.RemoteModule, &regionSize, MEM_RELEASE);
         return FALSE;
     }
-    printf("MapDll: Fixed module sections\n");
+
+    vLog("fixed sections");
 
     if (!FixModuleReallocations(Injection)) {
-        printf("MapDll failed: FixModuleReallocations failed\n");
+        vLog("failed to fix reallocations");
         Injection.Driver.VirtualFreeEx(&Injection.RemoteModule, &regionSize, MEM_RELEASE);
         return FALSE;
     }
-    printf("MapDll: Fixed module relocations\n");
+    
+    vLog("fixed reallocations");
 
     if (!FixModuleIAT(Injection)) {
-        printf("MapDll failed: FixModuleIAT failed\n");
+        vLog("failed to fix IAT");
         Injection.Driver.VirtualFreeEx(&Injection.RemoteModule, &regionSize, MEM_RELEASE);
         return FALSE;
     }
-    printf("MapDll: Fixed module IAT\n");
+
+    vLog("fixed IAT");
 
     void* dllEntry = GetModuleExportFunction(Injection, "DllEntry");
     if (!dllEntry) {
-        printf("MapDll failed: GetModuleExportFunction failed for DllEntry\n");
+        vLog("DllEntry does not exist in module");
         Injection.Driver.VirtualFreeEx(&Injection.RemoteModule, &regionSize, MEM_RELEASE);
         return FALSE;
     }
-    printf("MapDll: Resolved DllMain at %p\n", dllEntry);
 
-    CleanModuleSections(Injection);
-    printf("MapDll: Cleaned module sections\n");
+    vLog("got DllEntry -> %p", dllEntry);
 
-    CleanModulePeHeader(Injection);
-    printf("MapDll: Cleaned PE header\n");
+    if (!CleanModuleSections(Injection))
+    {
+        vLog("failed to clean module sections");
+    }
+    else
+        vLog("cleaned module sections");
+    
+
+
+    if (!CleanModulePeHeader(Injection))
+    {
+        vLog("failed to clean pe header");
+    }
+    else
+        vLog("cleaned pe header");
 
     if (!Injection.Driver.CreateRemoteThread(dllEntry)) {
-        printf("MapDll failed: CreateRemoteThread failed\n");
+        vLog("failed to call DllEntry");
         Injection.Driver.VirtualFreeEx(&Injection.RemoteModule, &regionSize, MEM_RELEASE);
         return FALSE;
     }
-    printf("MapDll: Executed DllMain\n");
+   
+    vLog("called DllEntry");
 
-    printf("MapDll: Injection completed successfully\n");
+    vLog("pray for no crashes, should be injected");
+
     return TRUE;
 }
 
 int main() {
-    CDriver driver;
-    if (!driver.Attach(L"notepad.exe")) {
-        std::wcout << L"Failed to attach to target process\n";
-        std::cin.get();
+    SetConsoleTitle(L"ripEAC ( kernel injector ) ");
+
+    wchar_t ProcessName[256] = { 0 };
+
+    wprintf(L"enter process name -> ");
+    if (scanf_s("%255ls", ProcessName, (unsigned)sizeof(ProcessName) / sizeof(wchar_t)) <= 0) {
         return 1;
     }
+
+    while (getchar() != '\n');
+
+    CDriver driver;
+    if (!driver.Attach(ProcessName)) {
+        printf("failed to attach to the process \n");
+        getchar();
+        return 1;
+    }
+
+    printf("attached \n");
 
     CInjector injector;
     PVOID moduleData = nullptr;
     SIZE_T moduleSize = 0;
 
     if (!injector.LoadFileIntoMemory(L"module.dll", moduleData, moduleSize)) {
-        std::wcout << L"Failed to load DLL file\n";
-        std::cin.get();
+        printf("failed to load module.dll\n");
+        driver.Detach();
+        getchar();
         return 1;
     }
 
     if (!injector.MapDll(driver, moduleData, moduleSize)) {
-        std::wcout << L"Failed to map DLL\n";
-        std::cin.get();
+        printf("failed to inject dll\n");
+        getchar();
+        driver.Detach();
         free(moduleData);
         return 1;
     }
 
+
+    printf("injected dll\n");
+
     free(moduleData);
-    std::wcout << L"DLL injected successfully\n";
+    
     driver.Detach();
-    std::cin.get();
+    printf("detached from kernel \n");
+
+    printf("enter to close ...\n");
+    getchar();
     return 0;
 }
