@@ -400,21 +400,21 @@ BOOLEAN CInjector::MapDll(CDriver& Driver, PVOID Module, SIZE_T ModuleSize) {
 
     vLog("got DllEntry -> %p", dllEntry);
 
-    if (!CleanModuleSections(Injection))
-    {
-        vLog("failed to clean module sections");
-    }
-    else
-        vLog("cleaned module sections");
+     if (!CleanModuleSections(Injection))
+     {
+         vLog("failed to clean module sections");
+     }
+     else
+         vLog("cleaned module sections");
+     
     
-
-
-    if (!CleanModulePeHeader(Injection))
-    {
-        vLog("failed to clean pe header");
-    }
-    else
-        vLog("cleaned pe header");
+    
+     if (!CleanModulePeHeader(Injection))
+     {
+         vLog("failed to clean pe header");
+     }
+     else
+         vLog("cleaned pe header");
 
     if (!Injection.Driver.CreateRemoteThread(dllEntry)) {
         vLog("failed to call DllEntry");
@@ -469,6 +469,8 @@ int main() {
         return 1;
     }
 
+
+    // maybe use SetCoalescableTimer for entry??
 
     printf("injected dll\n");
 

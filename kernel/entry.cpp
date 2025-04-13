@@ -43,5 +43,6 @@ NTSTATUS entry(PDRIVER_OBJECT driver_obj, PUNICODE_STRING reg_path)
 extern "C" NTSTATUS FxDriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath) {
     UNREFERENCED_PARAMETER(DriverObject);
     UNREFERENCED_PARAMETER(RegistryPath);
+    InitFunctions();
     return IoCreateDriver(NULL, entry);
 }

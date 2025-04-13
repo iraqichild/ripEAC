@@ -204,31 +204,72 @@ NTSTATUS ProtectVirtualMemory(VirtualProtect_* Params)
     return ntStatus;
 }
 
-VOID SuspendThreadManually(PKTHREAD Thread) {
-    Thread->SuspendCount = 1;
+const char* PsSuspendThreadSig = "\x48\x89\x54\x24\x10\x48\x89\x4C\x24\x08\x53\x56\x57\x41\x56\x41\x57\x48\x83\xEC\x20";
+const char* PsSuspendThreadMask = "xxxxxxxxxxxxxxxxxxxx";
 
-    Thread->ThreadFlags |= (1 << 14);
+const char* PsResumeThreadSig = "\x48\x89\x5C\x24\x08\x48\x89\x74\x24\x10\x57\x48\x83\xEC\x20\x48\x8B\xDA\x48\x8B\xF9\xE8";
+const char* PsResumeThreadMask = "xxxxxxxxxxxxxxxxxxxx";
 
-    Thread->State = 5; 
 
-    KeInitializeEvent(&Thread->SuspendEvent, SynchronizationEvent, FALSE);
-    KeSetEvent(&Thread->SuspendEvent, 0, FALSE);
+PBYTE FindPattern(PVOID module, DWORD size, LPCSTR pattern, LPCSTR mask) {
+
+    auto checkMask = [](PBYTE buffer, LPCSTR pattern, LPCSTR mask) -> BOOL
+        {
+            for (auto x = buffer; *mask; pattern++, mask++, x++) {
+                auto addr = *(BYTE*)(pattern);
+                if (addr != *x && *mask != '?')
+                    return FALSE;
+            }
+
+            return TRUE;
+        };
+
+    for (auto x = 0; x < size - strlen(mask); x++) {
+
+        auto addr = (PBYTE)module + x;
+        if (checkMask(addr, pattern, mask))
+            return addr;
+    }
+
+    return NULL;
 }
- 
-VOID UnsuspendThreadManually(PKTHREAD Thread) {
-    Thread->SuspendCount = 0;
 
-    Thread->ThreadFlags &= ~(1 << 14);
+typedef NTSTATUS(__fastcall* PsResumeThread_t)(PETHREAD pThread, PULONG SuspendTimes);
+typedef NTSTATUS(__fastcall* PsSuspendThread_t)(PETHREAD pThread, PULONG SuspendTimes);
 
-    Thread->State = 2; 
+static PsResumeThread_t PsResumeThread = nullptr;
+static PsSuspendThread_t PsSuspendThread = nullptr;
 
-    KeResetEvent(&Thread->SuspendEvent);
+void InitFunctions() {
+    PVOID ntoskrnlBase = get_module_base(L"ntoskrnl.exe");
+    if (!ntoskrnlBase) {
+        return;
+    }
+
+    ULONG ntoskrnlSize = get_module_size(L"ntoskrnl.exe");
+
+    if (ntoskrnlSize == 0) {
+        return;
+    }
+
+    PBYTE suspendAddr = FindPattern(ntoskrnlBase, ntoskrnlSize, PsSuspendThreadSig, PsSuspendThreadMask);
+    if (suspendAddr) {
+        PsSuspendThread = (PsSuspendThread_t)((uintptr_t)ntoskrnlBase + 0x6C0640);
+    }
+
+    PBYTE resumeAddr = FindPattern(ntoskrnlBase, ntoskrnlSize, PsResumeThreadSig, PsResumeThreadMask);
+    if (resumeAddr) {
+        PsResumeThread = (PsResumeThread_t)((uintptr_t)ntoskrnlBase + 0x70AD60);
+    }
 }
 
 NTSTATUS CallFunctionViaThreadHijacking(ThreadHijack_* Params)
 {
     if (!Params || !Params->startAddress || !Params->processId || !Params->threadId)
         return STATUS_INVALID_PARAMETER;
+
+    if (!SeSinglePrivilegeCheck(LUID{ RtlConvertUlongToLuid(SE_TCB_PRIVILEGE) }, KernelMode))
+        return STATUS_PRIVILEGE_NOT_HELD;
 
     PEPROCESS pProcess = nullptr;
     PETHREAD pThread = nullptr;
@@ -240,7 +281,8 @@ NTSTATUS CallFunctionViaThreadHijacking(ThreadHijack_* Params)
 
     if (pProcess == nullptr || PsGetProcessExitStatus(pProcess) != STATUS_PENDING)
     {
-        ObDereferenceObject(pProcess);
+        if (pProcess)
+            ObDereferenceObject(pProcess);
         return STATUS_INVALID_PARAMETER;
     }
 
@@ -253,12 +295,14 @@ NTSTATUS CallFunctionViaThreadHijacking(ThreadHijack_* Params)
 
     if (pThread == nullptr)
     {
-        ObDereferenceObject(pThread);
         ObDereferenceObject(pProcess);
         return STATUS_INVALID_PARAMETER;
     }
 
-  //  SuspendThreadManually(pThread);
+    KeEnterCriticalRegion();
+
+    ULONG suspendtimes = 0;
+    PsSuspendThread(pThread, &suspendtimes);
 
     CONTEXT threadContext = { 0 };
     threadContext.ContextFlags = CONTEXT_ALL;
@@ -266,32 +310,35 @@ NTSTATUS CallFunctionViaThreadHijacking(ThreadHijack_* Params)
     ntStatus = GetThreadContext(pThread, &threadContext);
     if (!NT_SUCCESS(ntStatus))
     {
+        PsResumeThread(pThread, &suspendtimes);
+        KeLeaveCriticalRegion();
         ObDereferenceObject(pThread);
         ObDereferenceObject(pProcess);
         return ntStatus;
     }
 
-    if ((ULONGLONG)Params->startAddress >= 0x7FFFFFFFFFFF)
-    {
-        ObDereferenceObject(pThread);
-        ObDereferenceObject(pProcess);
-        return STATUS_INVALID_PARAMETER;
-    }
-
+    ULONGLONG originalRip = threadContext.Rip;
     threadContext.Rip = (ULONGLONG)Params->startAddress;
 
     ntStatus = SetThreadContext(pThread, &threadContext);
     if (!NT_SUCCESS(ntStatus))
     {
+        threadContext.Rip = originalRip;
+        SetThreadContext(pThread, &threadContext); 
+        PsResumeThread(pThread, &suspendtimes);
+        KeLeaveCriticalRegion();
         ObDereferenceObject(pThread);
         ObDereferenceObject(pProcess);
         return ntStatus;
     }
 
-   /// UnsuspendThreadManually(pThread);
+    PsResumeThread(pThread, &suspendtimes);
+    KeLeaveCriticalRegion();
 
     ObDereferenceObject(pThread);
     ObDereferenceObject(pProcess);
+
     return STATUS_SUCCESS;
 }
+
 #endif

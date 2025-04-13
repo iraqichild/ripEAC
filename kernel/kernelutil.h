@@ -50,6 +50,27 @@ PVOID get_module_base(const LPWSTR module_name)
 	return (PVOID)NULL;
 }
 
+SIZE_T get_module_size(const LPWSTR module_name)
+{
+	PLIST_ENTRY ps_loaded_module_list = PsLoadedModuleList;
+	if (!ps_loaded_module_list)
+		return (SIZE_T)NULL;
+
+	UNICODE_STRING name = unicodeStr(module_name);
+	for (PLIST_ENTRY link = ps_loaded_module_list; link != ps_loaded_module_list->Blink; link = link->Flink)
+	{
+		PLDR_DATA_TABLE_ENTRY entry = CONTAINING_RECORD(link, LDR_DATA_TABLE_ENTRY, InLoadOrderModuleList);
+
+		if (RtlEqualUnicodeString((PCUNICODE_STRING)&entry->BaseDllName, (PCUNICODE_STRING)&name, TRUE))
+		{
+			return (SIZE_T)entry->SizeOfImage;
+		}
+	}
+
+	return (SIZE_T)NULL;
+}
+
+
 PVOID get_system_base_export(const LPWSTR module_name, LPCSTR routine_name)
 {
 	PVOID lp_module = get_module_base(module_name);
