@@ -7,18 +7,22 @@
 
 void Main()
 {
-    AllocConsole();
-    SetConsoleTitle(L"ripEac");
-    FILE* fp;
-    freopen_s(&fp, "CONOUT$", "w", stdout);
 
-    printf("hello from ripEAC \n");
 
 }
 
 EXTERN_DLL_EXPORT void DllEntry(...)
 {
-    HANDLE hThread = CreateThread(NULL, NULL, reinterpret_cast<LPTHREAD_START_ROUTINE>(Main), nullptr, NULL, NULL);
-    if (hThread)
-        CloseHandle(hThread);
+   //HANDLE hThread = CreateThread(NULL, NULL, reinterpret_cast<LPTHREAD_START_ROUTINE>(Main), nullptr, NULL, NULL);
+   //if (hThread)
+   //    CloseHandle(hThread);
+
+    //AllocConsole();
+    //SetConsoleTitle(L"ripEac");
+    //FILE* fp;
+    //freopen_s(&fp, "CONOUT$", "w", stdout);
+    //
+    //printf("hello from ripEAC \n");
+
+    MessageBoxW(NULL, L"hello from ripEAC", L"ripEAC", MB_OK);
 }
