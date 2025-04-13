@@ -70,10 +70,12 @@ NTSTATUS AllocateVirtualMemory(VirtualAlloc_* Params)
 
 	Address = *Params->baseAddress;
 	Size = *Params->RegionSize;
+    KAPC_STATE kState{};
 
-	KeAttachProcess(pProcess);
+    KeStackAttachProcess(pProcess, &kState);
+
 	ntStatus = ZwAllocateVirtualMemory(NtCurrentProcess(), &Address, NULL, &Size, Params->allocationType, Params->ProtectionType);
-	KeDetachProcess();
+    KeUnstackDetachProcess(&kState);
 
 	*Params->baseAddress = Address;
 	*Params->RegionSize = Size;
@@ -103,9 +105,14 @@ NTSTATUS FreeVirtualMemory(VirtualFree_* Params)
 	Address = *Params->baseAddress;
 	Size = *Params->RegionSize;
 
-	KeAttachProcess(pProcess);
+
+    KAPC_STATE kState{};
+
+    KeStackAttachProcess(pProcess, &kState);
+
 	ntStatus = ZwFreeVirtualMemory(NtCurrentProcess(), &Address, &Size, Params->FreeType);
-	KeDetachProcess();
+    KeUnstackDetachProcess(&kState);
+
 
 	*Params->baseAddress = Address;
 	*Params->RegionSize = Size;
@@ -180,9 +187,11 @@ NTSTATUS ProtectVirtualMemory(VirtualProtect_* Params)
     SIZE_T size = *Params->RegionSize;
     ULONG oldProtect = 0;
 
-    KeAttachProcess(pProcess);
+    KAPC_STATE kState{};
+
+    KeStackAttachProcess(pProcess, &kState);
     ntStatus = ZwProtectVirtualMemory(NtCurrentProcess(), &address, &size, Params->newProtection, &oldProtect);
-    KeDetachProcess();
+    KeUnstackDetachProcess(&kState);
 
     *Params->baseAddress = address;
     *Params->RegionSize = size;
@@ -193,11 +202,31 @@ NTSTATUS ProtectVirtualMemory(VirtualProtect_* Params)
     return ntStatus;
 }
 
+VOID SuspendThreadManually(PKTHREAD Thread) {
+    Thread->SuspendCount = 1;
+
+    Thread->ThreadFlags |= (1 << 14);
+
+    Thread->State = 5; 
+
+    KeInitializeEvent(&Thread->SuspendEvent, SynchronizationEvent, FALSE);
+    KeSetEvent(&Thread->SuspendEvent, 0, FALSE);
+}
+
+VOID UnsuspendThreadManually(PKTHREAD Thread) {
+    Thread->SuspendCount = 0;
+
+    Thread->ThreadFlags &= ~(1 << 14);
+
+    Thread->State = 2; 
+
+    KeResetEvent(&Thread->SuspendEvent);
+}
+
 NTSTATUS CallFunctionViaThreadHijacking(ThreadHijack_* Params)
 {
     if (!Params || !Params->startAddress || !Params->processId || !Params->threadId)
         return STATUS_INVALID_PARAMETER;
-    
 
     PEPROCESS pProcess = nullptr;
     PETHREAD pThread = nullptr;
@@ -206,36 +235,42 @@ NTSTATUS CallFunctionViaThreadHijacking(ThreadHijack_* Params)
     ntStatus = PsLookupProcessByProcessId((HANDLE)Params->processId, &pProcess);
     if (!NT_SUCCESS(ntStatus))
         return ntStatus;
-    
 
-    if (pProcess == nullptr || PsGetProcessExitStatus(pProcess) != STATUS_PENDING) {
+    if (pProcess == nullptr || PsGetProcessExitStatus(pProcess) != STATUS_PENDING)
+    {
         ObDereferenceObject(pProcess);
         return STATUS_INVALID_PARAMETER;
     }
 
     ntStatus = PsLookupThreadByThreadId((HANDLE)Params->threadId, &pThread);
-    if (!NT_SUCCESS(ntStatus)) {
+    if (!NT_SUCCESS(ntStatus))
+    {
         ObDereferenceObject(pProcess);
         return ntStatus;
     }
 
-    if (pThread == nullptr) {
+    if (pThread == nullptr)
+    {
         ObDereferenceObject(pThread);
         ObDereferenceObject(pProcess);
         return STATUS_INVALID_PARAMETER;
     }
 
+    SuspendThreadManually(pThread);
+
     CONTEXT threadContext = { 0 };
-    threadContext.ContextFlags = CONTEXT_CONTROL; 
+    threadContext.ContextFlags = CONTEXT_CONTROL | CONTEXT_INTEGER;
 
     ntStatus = GetThreadContext(pThread, &threadContext);
-    if (!NT_SUCCESS(ntStatus)) {
+    if (!NT_SUCCESS(ntStatus))
+    {
         ObDereferenceObject(pThread);
         ObDereferenceObject(pProcess);
         return ntStatus;
     }
 
-    if ((ULONGLONG)Params->startAddress >= 0x7FFFFFFFFFFF) {
+    if ((ULONGLONG)Params->startAddress >= 0x7FFFFFFFFFFF)
+    {
         ObDereferenceObject(pThread);
         ObDereferenceObject(pProcess);
         return STATUS_INVALID_PARAMETER;
@@ -244,15 +279,18 @@ NTSTATUS CallFunctionViaThreadHijacking(ThreadHijack_* Params)
     threadContext.Rip = (ULONGLONG)Params->startAddress;
 
     ntStatus = SetThreadContext(pThread, &threadContext);
-    if (!NT_SUCCESS(ntStatus)) {
+    if (!NT_SUCCESS(ntStatus))
+    {
         ObDereferenceObject(pThread);
         ObDereferenceObject(pProcess);
         return ntStatus;
     }
 
+
+    UnsuspendThreadManually(pThread);
+
     ObDereferenceObject(pThread);
     ObDereferenceObject(pProcess);
-    return ntStatus;
+    return STATUS_SUCCESS;
 }
-
 #endif
