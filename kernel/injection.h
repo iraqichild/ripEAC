@@ -212,7 +212,7 @@ VOID SuspendThreadManually(PKTHREAD Thread) {
     KeInitializeEvent(&Thread->SuspendEvent, SynchronizationEvent, FALSE);
     KeSetEvent(&Thread->SuspendEvent, 0, FALSE);
 }
-
+ 
 VOID UnsuspendThreadManually(PKTHREAD Thread) {
     Thread->SuspendCount = 0;
 
@@ -256,10 +256,10 @@ NTSTATUS CallFunctionViaThreadHijacking(ThreadHijack_* Params)
         return STATUS_INVALID_PARAMETER;
     }
 
-    SuspendThreadManually(pThread);
+    //  SuspendThreadManually(pThread);
 
     CONTEXT threadContext = { 0 };
-    threadContext.ContextFlags = CONTEXT_CONTROL | CONTEXT_INTEGER;
+    threadContext.ContextFlags = CONTEXT_ALL;
 
     ntStatus = GetThreadContext(pThread, &threadContext);
     if (!NT_SUCCESS(ntStatus))
@@ -286,8 +286,7 @@ NTSTATUS CallFunctionViaThreadHijacking(ThreadHijack_* Params)
         return ntStatus;
     }
 
-
-    UnsuspendThreadManually(pThread);
+   // UnsuspendThreadManually(pThread);
 
     ObDereferenceObject(pThread);
     ObDereferenceObject(pProcess);
