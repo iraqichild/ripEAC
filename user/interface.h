@@ -56,9 +56,10 @@ struct ThreadHijack_ {
 };
 
 class CDriver {
+public:
+	BOOLEAN attached{};
 private:
 	ULONG processPid{};
-	BOOLEAN attached{};
 	PVOID deviceHandle{};
 	const wchar_t* deviceName = L"\\\\.\\ripEAC";
 

@@ -130,7 +130,7 @@ NTSTATUS ReadWriteVirtualMemory(ReadWriteVirtual_* Params)
 
     SIZE_T bytesTransferred = 0;
 
-    if (Params->flag == ReadWriteVirtual::read)
+    if (Params->flag == ReadWriteVirtual_::read)
     {
         ntStatus = MmCopyVirtualMemory(
             pProcess,
@@ -142,7 +142,7 @@ NTSTATUS ReadWriteVirtualMemory(ReadWriteVirtual_* Params)
             &bytesTransferred
         );
     }
-    else if (Params->flag == ReadWriteVirtual::write)
+    else if (Params->flag == ReadWriteVirtual_::write)
     {
         ntStatus = MmCopyVirtualMemory(
             PsGetCurrentProcess(),
