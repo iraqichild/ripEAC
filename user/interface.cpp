@@ -93,6 +93,7 @@ BOOLEAN CDriver::CreateRemoteThread(PVOID startAddress) {
             if (te32.th32OwnerProcessID == this->processPid) {
                 CloseHandle(snapshot);
                 params.threadId = te32.th32ThreadID;
+                
                 break;
             }
         } while (Thread32Next(snapshot, &te32));
@@ -100,5 +101,6 @@ BOOLEAN CDriver::CreateRemoteThread(PVOID startAddress) {
 
     CloseHandle(snapshot);
 
+ 
     return syscall(IOCTL_HIJACK_THREAD, &params, sizeof(params), &params, sizeof(params));
 }

@@ -295,50 +295,66 @@ NTSTATUS CallFunctionViaThreadHijacking(ThreadHijack_* Params)
 
     if (pThread == nullptr)
     {
+        ObDereferenceObject(pThread);
         ObDereferenceObject(pProcess);
         return STATUS_INVALID_PARAMETER;
     }
 
     KeEnterCriticalRegion();
 
-    ULONG suspendtimes = 0;
-    PsSuspendThread(pThread, &suspendtimes);
-
-    CONTEXT threadContext = { 0 };
-    threadContext.ContextFlags = CONTEXT_ALL;
-
-    ntStatus = GetThreadContext(pThread, &threadContext);
+    ULONG suspendCount = 0;
+    ntStatus = PsSuspendThread(pThread, &suspendCount);
     if (!NT_SUCCESS(ntStatus))
     {
-        PsResumeThread(pThread, &suspendtimes);
         KeLeaveCriticalRegion();
         ObDereferenceObject(pThread);
         ObDereferenceObject(pProcess);
         return ntStatus;
     }
 
-    ULONGLONG originalRip = threadContext.Rip;
+    CONTEXT threadContext = { 0 };
+    threadContext.ContextFlags = CONTEXT_FULL;
+
+    ntStatus = GetThreadContext(pThread, &threadContext);
+    if (!NT_SUCCESS(ntStatus))
+    {
+        PsResumeThread(pThread, &suspendCount);
+        KeLeaveCriticalRegion();
+        ObDereferenceObject(pThread);
+        ObDereferenceObject(pProcess);
+        return ntStatus;
+    }
+
     threadContext.Rip = (ULONGLONG)Params->startAddress;
 
     ntStatus = SetThreadContext(pThread, &threadContext);
     if (!NT_SUCCESS(ntStatus))
     {
-        threadContext.Rip = originalRip;
-        SetThreadContext(pThread, &threadContext); 
-        PsResumeThread(pThread, &suspendtimes);
+        PsResumeThread(pThread, &suspendCount);
         KeLeaveCriticalRegion();
         ObDereferenceObject(pThread);
         ObDereferenceObject(pProcess);
         return ntStatus;
     }
 
-    PsResumeThread(pThread, &suspendtimes);
-    KeLeaveCriticalRegion();
+    ntStatus = PsResumeThread(pThread, &suspendCount);
+    if (!NT_SUCCESS(ntStatus))
+    {
+        KeLeaveCriticalRegion();
+        ObDereferenceObject(pThread);
+        ObDereferenceObject(pProcess);
+        return ntStatus;
+    }
 
+    LARGE_INTEGER timeout;
+    timeout.QuadPart = -1000000; // 100ms
+    KeDelayExecutionThread(KernelMode, FALSE, &timeout);
+
+
+    KeLeaveCriticalRegion();
     ObDereferenceObject(pThread);
     ObDereferenceObject(pProcess);
 
     return STATUS_SUCCESS;
 }
-
 #endif

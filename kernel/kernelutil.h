@@ -14,6 +14,7 @@ inline IMAGE_DOS_HEADER* GetImageDosHeader(const PVOID Image) {
 		return nullptr;
 	return dosHeader;
 }
+
 inline IMAGE_NT_HEADERS* GetImageNtHeader(const PVOID Image) {
 	IMAGE_DOS_HEADER* dosHeader = GetImageDosHeader(Image);
 	if (!dosHeader || dosHeader->e_lfanew <= 0 || dosHeader->e_lfanew > 0x10000)

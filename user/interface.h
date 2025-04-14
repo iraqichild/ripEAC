@@ -61,7 +61,7 @@ public:
 private:
 	ULONG processPid{};
 	PVOID deviceHandle{};
-	const wchar_t* deviceName = L"\\\\.\\uwuinjector";
+	const wchar_t* deviceName = L"\\\\.\\owouwu";
 
 public:
 	BOOLEAN Attach(const wchar_t* processName);
