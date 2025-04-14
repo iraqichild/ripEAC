@@ -8,7 +8,7 @@
 
 struct InjectionStruct
 {
-    CDriver Driver;
+    Interface Driver;
 
     PVOID Module{};
     PVOID RemoteModule{};
@@ -42,7 +42,7 @@ public:
     PVOID GetModuleExportFunction(InjectionStruct& Module, const char* ExportName);
 
     BOOLEAN LoadFileIntoMemory(const wchar_t* FilePath, PVOID& FileBytes, SIZE_T& FileSize);
-    BOOLEAN MapDll(CDriver& Driver, PVOID Module, SIZE_T ModuleSize);
+    BOOLEAN MapDll(Interface& ctx, PVOID Module, SIZE_T ModuleSize);
 };
 
 IMAGE_DOS_HEADER* CInjector::GetImageDosHeader(InjectionStruct& Module) {
@@ -61,7 +61,7 @@ BOOLEAN CInjector::FixModuleSections(InjectionStruct& Module)
         if (pSectionHeader[i].SizeOfRawData) {
             void* dest = static_cast<BYTE*>(Module.RemoteModule) + pSectionHeader[i].VirtualAddress;
             void* src = static_cast<BYTE*>(Module.Module) + pSectionHeader[i].PointerToRawData;
-            if (!Module.Driver.WriteProcessMemory(dest, src, pSectionHeader[i].SizeOfRawData)) {
+            if (!Module.Driver.write_memory(dest, src, pSectionHeader[i].SizeOfRawData)) {
                 return false;
             }
         }
@@ -78,12 +78,12 @@ BOOLEAN CInjector::FixModuleReallocations(InjectionStruct& Module) {
                 Module.pNtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].VirtualAddress;
             IMAGE_BASE_RELOCATION reloc_block;
 
-            while (Module.Driver.ReadProcessMemory(reloc_address, &reloc_block, sizeof(IMAGE_BASE_RELOCATION)) && reloc_block.VirtualAddress) {
+            while (Module.Driver.read_memory(reloc_address, &reloc_block, sizeof(IMAGE_BASE_RELOCATION)) && reloc_block.VirtualAddress) {
                 DWORD num_entries = (reloc_block.SizeOfBlock - sizeof(IMAGE_BASE_RELOCATION)) / sizeof(WORD);
                 std::vector<WORD> reloc_entries(num_entries);
                 void* entries_address = static_cast<BYTE*>(reloc_address) + sizeof(IMAGE_BASE_RELOCATION);
 
-                if (!Module.Driver.ReadProcessMemory(entries_address, reloc_entries.data(), num_entries * sizeof(WORD))) {
+                if (!Module.Driver.read_memory(entries_address, reloc_entries.data(), num_entries * sizeof(WORD))) {
                     return FALSE;
                 }
 
@@ -95,8 +95,8 @@ BOOLEAN CInjector::FixModuleReallocations(InjectionStruct& Module) {
                         DWORD* patch_address = reinterpret_cast<DWORD*>(
                             static_cast<BYTE*>(Module.RemoteModule) + reloc_block.VirtualAddress + offset);
                         DWORD current_value;
-                        if (!Module.Driver.ReadProcessMemory(patch_address, &current_value, sizeof(DWORD)) ||
-                            !Module.Driver.WriteProcessMemory(patch_address, &(current_value += static_cast<DWORD>(delta)), sizeof(DWORD))) {
+                        if (!Module.Driver.read_memory(patch_address, &current_value, sizeof(DWORD)) ||
+                            !Module.Driver.write_memory(patch_address, &(current_value += static_cast<DWORD>(delta)), sizeof(DWORD))) {
                             return FALSE;
                         }
                     }
@@ -104,8 +104,8 @@ BOOLEAN CInjector::FixModuleReallocations(InjectionStruct& Module) {
                         ULONGLONG* patch_address = reinterpret_cast<ULONGLONG*>(
                             static_cast<BYTE*>(Module.RemoteModule) + reloc_block.VirtualAddress + offset);
                         ULONGLONG current_value;
-                        if (!Module.Driver.ReadProcessMemory(patch_address, &current_value, sizeof(ULONGLONG)) ||
-                            !Module.Driver.WriteProcessMemory(patch_address, &(current_value += delta), sizeof(ULONGLONG))) {
+                        if (!Module.Driver.read_memory(patch_address, &current_value, sizeof(ULONGLONG)) ||
+                            !Module.Driver.write_memory(patch_address, &(current_value += delta), sizeof(ULONGLONG))) {
                             return FALSE;
                         }
                     }
@@ -124,14 +124,14 @@ BOOLEAN CInjector::FixModuleIAT(InjectionStruct& Module) {
             Module.pNtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress);
 
         IMAGE_IMPORT_DESCRIPTOR import_desc = {};
-        if (!Module.Driver.ReadProcessMemory(pImportDesc, &import_desc, sizeof(IMAGE_IMPORT_DESCRIPTOR))) {
+        if (!Module.Driver.read_memory(pImportDesc, &import_desc, sizeof(IMAGE_IMPORT_DESCRIPTOR))) {
             return FALSE;
         }
 
         while (import_desc.Name) {
             char dll_name[256] = { 0 };
             void* name_address = static_cast<BYTE*>(Module.RemoteModule) + import_desc.Name;
-            if (!Module.Driver.ReadProcessMemory(name_address, dll_name, sizeof(dll_name) - 1)) {
+            if (!Module.Driver.read_memory(name_address, dll_name, sizeof(dll_name) - 1)) {
                 return FALSE;
             }
 
@@ -148,7 +148,7 @@ BOOLEAN CInjector::FixModuleIAT(InjectionStruct& Module) {
                 pThunk;
 
             IMAGE_THUNK_DATA thunk_data = {};
-            if (!Module.Driver.ReadProcessMemory(pOrigThunk, &thunk_data, sizeof(IMAGE_THUNK_DATA))) {
+            if (!Module.Driver.read_memory(pOrigThunk, &thunk_data, sizeof(IMAGE_THUNK_DATA))) {
                 FreeLibrary(hModule);
                 return FALSE;
             }
@@ -161,7 +161,7 @@ BOOLEAN CInjector::FixModuleIAT(InjectionStruct& Module) {
                         FreeLibrary(hModule);
                         return FALSE;
                     }
-                    if (!Module.Driver.WriteProcessMemory(pThunk, &func_address, sizeof(SIZE_T))) {
+                    if (!Module.Driver.write_memory(pThunk, &func_address, sizeof(SIZE_T))) {
                         FreeLibrary(hModule);
                         return FALSE;
                     }
@@ -169,13 +169,13 @@ BOOLEAN CInjector::FixModuleIAT(InjectionStruct& Module) {
                 else {
                     IMAGE_IMPORT_BY_NAME import_by_name = {};
                     void* import_by_name_address = static_cast<BYTE*>(Module.RemoteModule) + thunk_data.u1.AddressOfData;
-                    if (!Module.Driver.ReadProcessMemory(import_by_name_address, &import_by_name, sizeof(IMAGE_IMPORT_BY_NAME))) {
+                    if (!Module.Driver.read_memory(import_by_name_address, &import_by_name, sizeof(IMAGE_IMPORT_BY_NAME))) {
                         FreeLibrary(hModule);
                         return FALSE;
                     }
 
                     char func_name[256] = { 0 };
-                    if (!Module.Driver.ReadProcessMemory(static_cast<BYTE*>(import_by_name_address) + offsetof(IMAGE_IMPORT_BY_NAME, Name), func_name, sizeof(func_name) - 1)) {
+                    if (!Module.Driver.read_memory(static_cast<BYTE*>(import_by_name_address) + offsetof(IMAGE_IMPORT_BY_NAME, Name), func_name, sizeof(func_name) - 1)) {
                         FreeLibrary(hModule);
                         return FALSE;
                     }
@@ -185,7 +185,7 @@ BOOLEAN CInjector::FixModuleIAT(InjectionStruct& Module) {
                         FreeLibrary(hModule);
                         return FALSE;
                     }
-                    if (!Module.Driver.WriteProcessMemory(pThunk, &func_address, sizeof(SIZE_T))) {
+                    if (!Module.Driver.write_memory(pThunk, &func_address, sizeof(SIZE_T))) {
                         FreeLibrary(hModule);
                         return FALSE;
                     }
@@ -193,14 +193,14 @@ BOOLEAN CInjector::FixModuleIAT(InjectionStruct& Module) {
 
                 pThunk++;
                 pOrigThunk++;
-                if (!Module.Driver.ReadProcessMemory(pOrigThunk, &thunk_data, sizeof(IMAGE_THUNK_DATA))) {
+                if (!Module.Driver.read_memory(pOrigThunk, &thunk_data, sizeof(IMAGE_THUNK_DATA))) {
                     break;
                 }
             }
             FreeLibrary(hModule);
 
             pImportDesc++;
-            if (!Module.Driver.ReadProcessMemory(pImportDesc, &import_desc, sizeof(IMAGE_IMPORT_DESCRIPTOR))) {
+            if (!Module.Driver.read_memory(pImportDesc, &import_desc, sizeof(IMAGE_IMPORT_DESCRIPTOR))) {
                 break;
             }
         }
@@ -227,7 +227,7 @@ BOOLEAN CInjector::CleanModuleSections(InjectionStruct& Module) {
         if (isUseless && sectionHeader[i].SizeOfRawData > 0) {
             void* sectionAddress = static_cast<BYTE*>(Module.RemoteModule) + sectionHeader[i].VirtualAddress;
             std::vector<char> zeroBuffer(sectionHeader[i].SizeOfRawData, 0);
-            if (!Module.Driver.WriteProcessMemory(sectionAddress, zeroBuffer.data(), sectionHeader[i].SizeOfRawData)) {
+            if (!Module.Driver.write_memory(sectionAddress, zeroBuffer.data(), sectionHeader[i].SizeOfRawData)) {
                 return FALSE;
             }
         }
@@ -236,7 +236,7 @@ BOOLEAN CInjector::CleanModuleSections(InjectionStruct& Module) {
 }
 BOOLEAN CInjector::CleanModulePeHeader(InjectionStruct& Module) {
     char CleanBuffer = 0;
-    return Module.Driver.WriteProcessMemory(Module.RemoteModule, &CleanBuffer, Module.pNtHeader->OptionalHeader.SizeOfHeaders);
+    return Module.Driver.write_memory(Module.RemoteModule, &CleanBuffer, Module.pNtHeader->OptionalHeader.SizeOfHeaders);
 }
 PVOID CInjector::GetModuleExportFunction(InjectionStruct& Module, const char* ExportName) {
     if (Module.pNtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress) {
@@ -245,7 +245,7 @@ PVOID CInjector::GetModuleExportFunction(InjectionStruct& Module, const char* Ex
             Module.pNtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress);
 
         IMAGE_EXPORT_DIRECTORY export_dir = {};
-        if (!Module.Driver.ReadProcessMemory(pExportDir, &export_dir, sizeof(IMAGE_EXPORT_DIRECTORY))) {
+        if (!Module.Driver.read_memory(pExportDir, &export_dir, sizeof(IMAGE_EXPORT_DIRECTORY))) {
             return nullptr;
         }
 
@@ -258,19 +258,19 @@ PVOID CInjector::GetModuleExportFunction(InjectionStruct& Module, const char* Ex
                 static_cast<BYTE*>(Module.RemoteModule) + export_dir.AddressOfNameOrdinals);
 
             std::vector<DWORD> func_rvas(export_dir.NumberOfFunctions);
-            if (!Module.Driver.ReadProcessMemory(pAddressOfFunctions, func_rvas.data(),
+            if (!Module.Driver.read_memory(pAddressOfFunctions, func_rvas.data(),
                 export_dir.NumberOfFunctions * sizeof(DWORD))) {
                 return nullptr;
             }
 
             std::vector<DWORD> name_rvas(export_dir.NumberOfNames);
-            if (!Module.Driver.ReadProcessMemory(pAddressOfNames, name_rvas.data(),
+            if (!Module.Driver.read_memory(pAddressOfNames, name_rvas.data(),
                 export_dir.NumberOfNames * sizeof(DWORD))) {
                 return nullptr;
             }
 
             std::vector<WORD> ordinals(export_dir.NumberOfNames);
-            if (!Module.Driver.ReadProcessMemory(pAddressOfNameOrdinals, ordinals.data(),
+            if (!Module.Driver.read_memory(pAddressOfNameOrdinals, ordinals.data(),
                 export_dir.NumberOfNames * sizeof(WORD))) {
                 return nullptr;
             }
@@ -278,7 +278,7 @@ PVOID CInjector::GetModuleExportFunction(InjectionStruct& Module, const char* Ex
             for (DWORD i = 0; i < export_dir.NumberOfNames; i++) {
                 char func_name[256] = { 0 };
                 void* name_address = static_cast<BYTE*>(Module.RemoteModule) + name_rvas[i];
-                if (!Module.Driver.ReadProcessMemory(name_address, func_name, sizeof(func_name) - 1)) {
+                if (!Module.Driver.read_memory(name_address, func_name, sizeof(func_name) - 1)) {
                     return nullptr;
                 }
 
@@ -323,8 +323,8 @@ BOOLEAN CInjector::LoadFileIntoMemory(const wchar_t* FilePath, PVOID& FileBytes,
     return TRUE;
 }
 
-BOOLEAN CInjector::MapDll(CDriver& Driver, PVOID Module, SIZE_T ModuleSize) {
-    if (!Module || !ModuleSize || !Driver.attached) {
+BOOLEAN CInjector::MapDll(Interface& ctx, PVOID Module, SIZE_T ModuleSize) {
+    if (!Module || !ModuleSize || !ctx.is_attached()) {
         vLog("invaild module");
         return FALSE;
     }
@@ -332,7 +332,7 @@ BOOLEAN CInjector::MapDll(CDriver& Driver, PVOID Module, SIZE_T ModuleSize) {
     vLog("vaild input");
 
     InjectionStruct Injection{};
-    Injection.Driver = Driver;
+    Injection.Driver = ctx;
     Injection.Module = Module;
     Injection.ModuleSize = ModuleSize;
     Injection.pDosHeader = GetImageDosHeader(Injection);
@@ -352,16 +352,16 @@ BOOLEAN CInjector::MapDll(CDriver& Driver, PVOID Module, SIZE_T ModuleSize) {
     vLog("vaild module");
 
     SIZE_T regionSize = Injection.pNtHeader->OptionalHeader.SizeOfImage;
-    if (!Injection.Driver.VirtualAllocEx(&Injection.RemoteModule, &regionSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE)) {
+    if (!Injection.Driver.virtual_alloc(&Injection.RemoteModule, &regionSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE)) {
         vLog("failed to allocate remote memory");
         return FALSE;
     }
 
     vLog("allocated remote memory -> %p", Injection.RemoteModule);
 
-    if (!Injection.Driver.WriteProcessMemory(Injection.RemoteModule, Module, ModuleSize)) {
+    if (!Injection.Driver.write_memory(Injection.RemoteModule, Module, ModuleSize)) {
         vLog("failed to write module");
-        Injection.Driver.VirtualFreeEx(&Injection.RemoteModule, &regionSize, MEM_RELEASE);
+        Injection.Driver.virtual_free(&Injection.RemoteModule, &regionSize, MEM_RELEASE);
         return FALSE;
     }
    
@@ -369,7 +369,7 @@ BOOLEAN CInjector::MapDll(CDriver& Driver, PVOID Module, SIZE_T ModuleSize) {
 
     if (!FixModuleSections(Injection)) {
         vLog("failed to fix sections");
-        Injection.Driver.VirtualFreeEx(&Injection.RemoteModule, &regionSize, MEM_RELEASE);
+        Injection.Driver.virtual_free(&Injection.RemoteModule, &regionSize, MEM_RELEASE);
         return FALSE;
     }
 
@@ -377,7 +377,7 @@ BOOLEAN CInjector::MapDll(CDriver& Driver, PVOID Module, SIZE_T ModuleSize) {
 
     if (!FixModuleReallocations(Injection)) {
         vLog("failed to fix reallocations");
-        Injection.Driver.VirtualFreeEx(&Injection.RemoteModule, &regionSize, MEM_RELEASE);
+        Injection.Driver.virtual_free(&Injection.RemoteModule, &regionSize, MEM_RELEASE);
         return FALSE;
     }
     
@@ -385,7 +385,7 @@ BOOLEAN CInjector::MapDll(CDriver& Driver, PVOID Module, SIZE_T ModuleSize) {
 
     if (!FixModuleIAT(Injection)) {
         vLog("failed to fix IAT");
-        Injection.Driver.VirtualFreeEx(&Injection.RemoteModule, &regionSize, MEM_RELEASE);
+        Injection.Driver.virtual_free(&Injection.RemoteModule, &regionSize, MEM_RELEASE);
         return FALSE;
     }
 
@@ -394,7 +394,7 @@ BOOLEAN CInjector::MapDll(CDriver& Driver, PVOID Module, SIZE_T ModuleSize) {
     void* dllEntry = GetModuleExportFunction(Injection, "DllEntry");
     if (!dllEntry) {
         vLog("DllEntry does not exist in module");
-        Injection.Driver.VirtualFreeEx(&Injection.RemoteModule, &regionSize, MEM_RELEASE);
+        Injection.Driver.virtual_free(&Injection.RemoteModule, &regionSize, MEM_RELEASE);
         return FALSE;
     }
 
@@ -416,9 +416,9 @@ BOOLEAN CInjector::MapDll(CDriver& Driver, PVOID Module, SIZE_T ModuleSize) {
      else
          vLog("cleaned pe header");
 
-    if (!Injection.Driver.CreateRemoteThread(dllEntry)) {
+    if (!Injection.Driver.create_remote_thread(dllEntry)) {
         vLog("failed to call DllEntry");
-        Injection.Driver.VirtualFreeEx(&Injection.RemoteModule, &regionSize, MEM_RELEASE);
+        Injection.Driver.virtual_free(&Injection.RemoteModule, &regionSize, MEM_RELEASE);
         return FALSE;
     }
    
@@ -441,8 +441,8 @@ int main() {
 
     while (getchar() != '\n');
 
-    CDriver driver;
-    if (!driver.Attach(ProcessName)) {
+    Interface ctx;
+    if (!ctx.attach(ProcessName)) {
         printf("failed to attach to the process \n");
         getchar();
         return 1;
@@ -456,15 +456,15 @@ int main() {
 
     if (!injector.LoadFileIntoMemory(L"module.dll", moduleData, moduleSize)) {
         printf("failed to load module.dll\n");
-        driver.Detach();
+        ctx.detach();
         getchar();
         return 1;
     }
 
-    if (!injector.MapDll(driver, moduleData, moduleSize)) {
+    if (!injector.MapDll(ctx, moduleData, moduleSize)) {
         printf("failed to inject dll\n");
         getchar();
-        driver.Detach();
+        ctx.detach();
         free(moduleData);
         return 1;
     }
@@ -476,7 +476,7 @@ int main() {
 
     free(moduleData);
     
-    driver.Detach();
+    ctx.detach();
     printf("detached from kernel \n");
 
     printf("enter to close ...\n");

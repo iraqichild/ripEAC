@@ -4,75 +4,33 @@
 #include <string>
 #include <TlHelp32.h>
 
-#define IOCTL_BASE 0x8000
-#define IOCTL_CODE(i) CTL_CODE(FILE_DEVICE_UNKNOWN, IOCTL_BASE + i, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define IOCTL_CODE(i) CTL_CODE(FILE_DEVICE_UNKNOWN, 0x8000 + i, METHOD_BUFFERED, FILE_ANY_ACCESS)
 
-#define IOCTL_ALLOCATE_MEMORY IOCTL_CODE(1)
-#define IOCTL_FREE_MEMORY IOCTL_CODE(2)
-#define IOCTL_READ_WRITE_MEMORY IOCTL_CODE(3)
-#define IOCTL_PROTECT_MEMORY IOCTL_CODE(4)
-#define IOCTL_HIJACK_THREAD IOCTL_CODE(5)
-
-struct VirtualAlloc_ {
-	ULONG processId;
-	PVOID* baseAddress;
-	SIZE_T* RegionSize;
-	ULONG allocationType;
-	ULONG ProtectionType;
-};
-
-struct VirtualFree_ {
-	ULONG processId;
-	PVOID* baseAddress;
-	SIZE_T* RegionSize;
-	ULONG FreeType;
-};
-
-struct ReadWriteVirtual_
-{
-	ULONG processId;
-	PVOID address;
-	PVOID buffer;
-	SIZE_T size;
-	enum eflag
-	{
-		read,
-		write
-	}flag;
-};
-
-struct VirtualProtect_ {
-	ULONG processId;
-	PVOID* baseAddress;
-	SIZE_T* RegionSize;
-	ULONG newProtection;
-	PULONG oldProtection;
-};
-
-struct ThreadHijack_ {
-	ULONG processId;
-	ULONG threadId;
-	PVOID startAddress;
-};
-
-class CDriver {
+class Interface {
 public:
-	BOOLEAN attached{};
-private:
-	ULONG processPid{};
-	PVOID deviceHandle{};
-	const wchar_t* deviceName = L"\\\\.\\owouwu";
+    bool attach(const std::wstring& process_name);
+    bool detach();
 
-public:
-	BOOLEAN Attach(const wchar_t* processName);
-	BOOLEAN Detach();
+    bool virtual_alloc(void** base_address, std::size_t* region_size,
+        std::uint32_t allocation_type, std::uint32_t protection_type);
 
-	BOOLEAN VirtualAllocEx(PVOID* baseAddress, SIZE_T* regionSize, ULONG allocationType, ULONG protectionType);
-	BOOLEAN VirtualFreeEx(PVOID* baseAddress, SIZE_T* regionSize, ULONG freeType);
-	BOOLEAN ReadProcessMemory(PVOID address, PVOID buffer, SIZE_T size);
-	BOOLEAN WriteProcessMemory(PVOID address, PVOID buffer, SIZE_T size);
-	BOOLEAN VirtualProtectEx(PVOID* baseAddress, SIZE_T* regionSize, ULONG newProtection, PULONG oldProtection);
-	BOOLEAN CreateRemoteThread(PVOID startAddress);
+    bool virtual_free(void** base_address, std::size_t* region_size,
+        std::uint32_t free_type);
+    bool read_memory(void* address, void* buffer, std::size_t size);
+    bool write_memory(void* address, void* buffer, std::size_t size);
+    bool virtual_protect(void** base_address, std::size_t* region_size,
+        std::uint32_t new_protection, std::uint32_t* old_protection);
+    bool create_remote_thread(void* start_address);
+
+    bool is_attached() const { return attached_; }
+
 private:
-	BOOLEAN syscall(DWORD ioctlCode, LPVOID inBuffer, DWORD inBufferSize, LPVOID outBuffer, DWORD outBufferSize);
+    bool syscall(std::uint32_t ioctl_code, void* in_buffer,
+        std::uint32_t in_buffer_size, void* out_buffer,
+        std::uint32_t out_buffer_size);
+
+    static constexpr const wchar_t* device_name_ = L"\\\\.\\ripEAC";
+    bool attached_ = false;
+    std::uint32_t process_pid_ = 0;
+    HANDLE device_handle_ = nullptr;
 };

@@ -37,8 +37,8 @@ NTSTATUS createdevice(_In_ PDRIVER_OBJECT driver_obj, _Out_ PDEVICE_OBJECT* devi
     PDEVICE_OBJECT dev_obj = NULL;
     NTSTATUS status = STATUS_SUCCESS;
 
-    drvName = unicodeStr(L"\\Device\\owouwu");
-    drvSymLink = unicodeStr(L"\\DosDevices\\owouwu");
+    drvName = unicodeStr(L"\\Device\\ripEAC");
+    drvSymLink = unicodeStr(L"\\DosDevices\\ripEAC");
     drvSDDL = unicodeStr(DEVICE_SDDL);
     UNICODE_STRING funcName = unicodeStr(L"IoCreateDeviceSecure");
 

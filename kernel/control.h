@@ -37,71 +37,71 @@ NTSTATUS device_io(PDEVICE_OBJECT device_obj, PIRP pIrp)
     {
     case IOCTL_ALLOCATE_MEMORY:
     {
-        if (irp_stack->Parameters.DeviceIoControl.InputBufferLength < sizeof(VirtualAlloc_))
+        if (irp_stack->Parameters.DeviceIoControl.InputBufferLength < sizeof(virtual_alloc_t))
         {
             status = STATUS_BUFFER_TOO_SMALL;
             break;
         }
 
-        VirtualAlloc_* params = (VirtualAlloc_*)pIrp->AssociatedIrp.SystemBuffer;
+        virtual_alloc_t* params = (virtual_alloc_t*)pIrp->AssociatedIrp.SystemBuffer;
         status = AllocateVirtualMemory(params);
-        information = sizeof(VirtualAlloc_);
+        information = sizeof(virtual_alloc_t);
         break;
     }
 
     case IOCTL_FREE_MEMORY:
     {
-        if (irp_stack->Parameters.DeviceIoControl.InputBufferLength < sizeof(VirtualFree_))
+        if (irp_stack->Parameters.DeviceIoControl.InputBufferLength < sizeof(virtual_free_t))
         {
             status = STATUS_BUFFER_TOO_SMALL;
             break;
         }
 
-        VirtualFree_* params = (VirtualFree_*)pIrp->AssociatedIrp.SystemBuffer;
+        virtual_free_t* params = (virtual_free_t*)pIrp->AssociatedIrp.SystemBuffer;
         status = FreeVirtualMemory(params);
-        information = sizeof(VirtualFree_);
+        information = sizeof(virtual_free_t);
         break;
     }
 
     case IOCTL_READ_WRITE_MEMORY:
     {
-        if (irp_stack->Parameters.DeviceIoControl.InputBufferLength < sizeof(ReadWriteVirtual_))
+        if (irp_stack->Parameters.DeviceIoControl.InputBufferLength < sizeof(read_write_t))
         {
             status = STATUS_BUFFER_TOO_SMALL;
             break;
         }
 
-        ReadWriteVirtual_* params = (ReadWriteVirtual_*)pIrp->AssociatedIrp.SystemBuffer;
+        read_write_t* params = (read_write_t*)pIrp->AssociatedIrp.SystemBuffer;
         status = ReadWriteVirtualMemory(params);
-        information = sizeof(ReadWriteVirtual_);
+        information = sizeof(read_write_t);
         break;
     }
 
     case IOCTL_PROTECT_MEMORY:
     {
-        if (irp_stack->Parameters.DeviceIoControl.InputBufferLength < sizeof(VirtualProtect_))
+        if (irp_stack->Parameters.DeviceIoControl.InputBufferLength < sizeof(virtual_protect_t))
         {
             status = STATUS_BUFFER_TOO_SMALL;
             break;
         }
 
-        VirtualProtect_* params = (VirtualProtect_*)pIrp->AssociatedIrp.SystemBuffer;
+        virtual_protect_t* params = (virtual_protect_t*)pIrp->AssociatedIrp.SystemBuffer;
         status = ProtectVirtualMemory(params);
-        information = sizeof(VirtualProtect_);
+        information = sizeof(virtual_protect_t);
         break;
     }
 
     case IOCTL_HIJACK_THREAD:
     {
-        if (irp_stack->Parameters.DeviceIoControl.InputBufferLength < sizeof(ThreadHijack_))
+        if (irp_stack->Parameters.DeviceIoControl.InputBufferLength < sizeof(thread_hijack_t))
         {
             status = STATUS_BUFFER_TOO_SMALL;
             break;
         }
 
-        ThreadHijack_* params = (ThreadHijack_*)pIrp->AssociatedIrp.SystemBuffer;
+        thread_hijack_t* params = (thread_hijack_t*)pIrp->AssociatedIrp.SystemBuffer;
         status = CallFunctionViaThreadHijacking(params);
-        information = sizeof(ThreadHijack_);
+        information = sizeof(thread_hijack_t);
         break;
     }
 

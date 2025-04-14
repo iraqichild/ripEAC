@@ -31,7 +31,6 @@ NTSTATUS GetThreadContext(PETHREAD thread, PCONTEXT ctx)
     ZwFreeVirtualMemory(NtCurrentProcess(), (void**)&BaseAddress, &Size, MEM_RELEASE);
     return status;
 }
-
 NTSTATUS SetThreadContext(PETHREAD thread, PCONTEXT ctx)
 {
     if (!thread || !ctx)
@@ -52,15 +51,15 @@ NTSTATUS SetThreadContext(PETHREAD thread, PCONTEXT ctx)
     return status;
 }
 
-NTSTATUS AllocateVirtualMemory(VirtualAlloc_* Params)
+NTSTATUS AllocateVirtualMemory(virtual_alloc_t* Params)
 {
-	if (!Params || !Params->baseAddress)
+	if (!Params || !Params->base_address)
 		return STATUS_UNSUCCESSFUL;
 
 	PEPROCESS pProcess{};
 	NTSTATUS ntStatus{};
 
-	ntStatus = PsLookupProcessByProcessId((HANDLE)Params->processId, &pProcess);
+	ntStatus = PsLookupProcessByProcessId((HANDLE)Params->process_id, &pProcess);
 	if (!NT_SUCCESS(ntStatus))
 		return ntStatus;
 
@@ -68,17 +67,17 @@ NTSTATUS AllocateVirtualMemory(VirtualAlloc_* Params)
 	PVOID Address{};
 	SIZE_T Size{};
 
-	Address = *Params->baseAddress;
-	Size = *Params->RegionSize;
+	Address = *Params->base_address;
+	Size = *Params->region_size;
     KAPC_STATE kState{};
 
     KeStackAttachProcess(pProcess, &kState);
 
-	ntStatus = ZwAllocateVirtualMemory(NtCurrentProcess(), &Address, NULL, &Size, Params->allocationType, Params->ProtectionType);
+	ntStatus = ZwAllocateVirtualMemory(NtCurrentProcess(), &Address, NULL, &Size, Params->allocation_type, Params->protection_type);
     KeUnstackDetachProcess(&kState);
 
-	*Params->baseAddress = Address;
-	*Params->RegionSize = Size;
+	*Params->base_address = Address;
+	*Params->region_size = Size;
 
 	ObDereferenceObject(pProcess);
 
@@ -86,15 +85,15 @@ NTSTATUS AllocateVirtualMemory(VirtualAlloc_* Params)
 	return ntStatus;
 }
 
-NTSTATUS FreeVirtualMemory(VirtualFree_* Params)
+NTSTATUS FreeVirtualMemory(virtual_free_t* Params)
 {
-	if (!Params || !Params->baseAddress)
+	if (!Params || !Params->base_address)
 		return STATUS_UNSUCCESSFUL;
 
 	PEPROCESS pProcess{};
 	NTSTATUS ntStatus{};
 
-	ntStatus = PsLookupProcessByProcessId((HANDLE)Params->processId, &pProcess);
+	ntStatus = PsLookupProcessByProcessId((HANDLE)Params->process_id, &pProcess);
 	if (!NT_SUCCESS(ntStatus))
 		return ntStatus;
 
@@ -102,20 +101,20 @@ NTSTATUS FreeVirtualMemory(VirtualFree_* Params)
 	PVOID Address{};
 	SIZE_T Size{};
 
-	Address = *Params->baseAddress;
-	Size = *Params->RegionSize;
+	Address = *Params->base_address;
+	Size = *Params->region_size;
 
 
     KAPC_STATE kState{};
 
     KeStackAttachProcess(pProcess, &kState);
 
-	ntStatus = ZwFreeVirtualMemory(NtCurrentProcess(), &Address, &Size, Params->FreeType);
+	ntStatus = ZwFreeVirtualMemory(NtCurrentProcess(), &Address, &Size, Params->free_type);
     KeUnstackDetachProcess(&kState);
 
 
-	*Params->baseAddress = Address;
-	*Params->RegionSize = Size;
+	*Params->base_address = Address;
+	*Params->region_size = Size;
 
 	ObDereferenceObject(pProcess);
 
@@ -123,7 +122,7 @@ NTSTATUS FreeVirtualMemory(VirtualFree_* Params)
 	return ntStatus;
 }
 
-NTSTATUS ReadWriteVirtualMemory(ReadWriteVirtual_* Params)
+NTSTATUS ReadWriteVirtualMemory(read_write_t* Params)
 {
     if (!Params || !Params->address || !Params->buffer)
         return STATUS_UNSUCCESSFUL;
@@ -131,13 +130,13 @@ NTSTATUS ReadWriteVirtualMemory(ReadWriteVirtual_* Params)
     PEPROCESS pProcess{};
     NTSTATUS ntStatus{};
 
-    ntStatus = PsLookupProcessByProcessId((HANDLE)Params->processId, &pProcess);
+    ntStatus = PsLookupProcessByProcessId((HANDLE)Params->process_id, &pProcess);
     if (!NT_SUCCESS(ntStatus))
         return ntStatus;
 
     SIZE_T bytesTransferred = 0;
 
-    if (Params->flag == ReadWriteVirtual_::read)
+    if (Params->flag == read_write_t::flag_t::read)
     {
         ntStatus = MmCopyVirtualMemory(
             pProcess,
@@ -149,7 +148,7 @@ NTSTATUS ReadWriteVirtualMemory(ReadWriteVirtual_* Params)
             &bytesTransferred
         );
     }
-    else if (Params->flag == ReadWriteVirtual_::write)
+    else if (Params->flag == read_write_t::flag_t::write)
     {
         ntStatus = MmCopyVirtualMemory(
             PsGetCurrentProcess(),
@@ -173,66 +172,38 @@ NTSTATUS ReadWriteVirtualMemory(ReadWriteVirtual_* Params)
     return ntStatus;
 }
 
-NTSTATUS ProtectVirtualMemory(VirtualProtect_* Params)
+NTSTATUS ProtectVirtualMemory(virtual_protect_t* Params)
 {
-    if (!Params || !Params->baseAddress || !Params->RegionSize || !Params->oldProtection)
+    if (!Params || !Params->base_address || !Params->region_size || !Params->old_protection)
         return STATUS_INVALID_PARAMETER;
 
     PEPROCESS pProcess = nullptr;
     NTSTATUS ntStatus = STATUS_SUCCESS;
 
-    ntStatus = PsLookupProcessByProcessId((HANDLE)Params->processId, &pProcess);
+    ntStatus = PsLookupProcessByProcessId((HANDLE)Params->process_id, &pProcess);
     if (!NT_SUCCESS(ntStatus))
         return ntStatus;
 
-    PVOID address = *Params->baseAddress;
-    SIZE_T size = *Params->RegionSize;
+    PVOID address = *Params->base_address;
+    SIZE_T size = *Params->region_size;
     ULONG oldProtect = 0;
 
     KAPC_STATE kState{};
 
     KeStackAttachProcess(pProcess, &kState);
-    ntStatus = ZwProtectVirtualMemory(NtCurrentProcess(), &address, &size, Params->newProtection, &oldProtect);
+    ntStatus = ZwProtectVirtualMemory(NtCurrentProcess(), &address, &size, Params->new_protection, &oldProtect);
     KeUnstackDetachProcess(&kState);
 
-    *Params->baseAddress = address;
-    *Params->RegionSize = size;
-    *Params->oldProtection = oldProtect;
+    *Params->base_address = address;
+    *Params->region_size = size;
+    *Params->old_protection = oldProtect;
 
     ObDereferenceObject(pProcess);
 
     return ntStatus;
 }
 
-const char* PsSuspendThreadSig = "\x48\x89\x54\x24\x10\x48\x89\x4C\x24\x08\x53\x56\x57\x41\x56\x41\x57\x48\x83\xEC\x20";
-const char* PsSuspendThreadMask = "xxxxxxxxxxxxxxxxxxxx";
 
-const char* PsResumeThreadSig = "\x48\x89\x5C\x24\x08\x48\x89\x74\x24\x10\x57\x48\x83\xEC\x20\x48\x8B\xDA\x48\x8B\xF9\xE8";
-const char* PsResumeThreadMask = "xxxxxxxxxxxxxxxxxxxx";
-
-
-PBYTE FindPattern(PVOID module, DWORD size, LPCSTR pattern, LPCSTR mask) {
-
-    auto checkMask = [](PBYTE buffer, LPCSTR pattern, LPCSTR mask) -> BOOL
-        {
-            for (auto x = buffer; *mask; pattern++, mask++, x++) {
-                auto addr = *(BYTE*)(pattern);
-                if (addr != *x && *mask != '?')
-                    return FALSE;
-            }
-
-            return TRUE;
-        };
-
-    for (auto x = 0; x < size - strlen(mask); x++) {
-
-        auto addr = (PBYTE)module + x;
-        if (checkMask(addr, pattern, mask))
-            return addr;
-    }
-
-    return NULL;
-}
 
 typedef NTSTATUS(__fastcall* PsResumeThread_t)(PETHREAD pThread, PULONG SuspendTimes);
 typedef NTSTATUS(__fastcall* PsSuspendThread_t)(PETHREAD pThread, PULONG SuspendTimes);
@@ -252,20 +223,14 @@ void InitFunctions() {
         return;
     }
 
-    PBYTE suspendAddr = FindPattern(ntoskrnlBase, ntoskrnlSize, PsSuspendThreadSig, PsSuspendThreadMask);
-    if (suspendAddr) {
-        PsSuspendThread = (PsSuspendThread_t)((uintptr_t)ntoskrnlBase + 0x6C0640);
-    }
-
-    PBYTE resumeAddr = FindPattern(ntoskrnlBase, ntoskrnlSize, PsResumeThreadSig, PsResumeThreadMask);
-    if (resumeAddr) {
-        PsResumeThread = (PsResumeThread_t)((uintptr_t)ntoskrnlBase + 0x70AD60);
-    }
+    // 22h2
+    PsSuspendThread = (PsSuspendThread_t)((uintptr_t)ntoskrnlBase + 0x6C0640);
+    PsResumeThread = (PsResumeThread_t)((uintptr_t)ntoskrnlBase + 0x70AD60);
 }
 
-NTSTATUS CallFunctionViaThreadHijacking(ThreadHijack_* Params)
+NTSTATUS CallFunctionViaThreadHijacking(thread_hijack_t* Params)
 {
-    if (!Params || !Params->startAddress || !Params->processId || !Params->threadId)
+    if (!Params || !Params->start_address || !Params->process_id || !Params->thread_id)
         return STATUS_INVALID_PARAMETER;
 
     if (!SeSinglePrivilegeCheck(LUID{ RtlConvertUlongToLuid(SE_TCB_PRIVILEGE) }, KernelMode))
@@ -275,7 +240,7 @@ NTSTATUS CallFunctionViaThreadHijacking(ThreadHijack_* Params)
     PETHREAD pThread = nullptr;
     NTSTATUS ntStatus = STATUS_SUCCESS;
 
-    ntStatus = PsLookupProcessByProcessId((HANDLE)Params->processId, &pProcess);
+    ntStatus = PsLookupProcessByProcessId((HANDLE)Params->process_id, &pProcess);
     if (!NT_SUCCESS(ntStatus))
         return ntStatus;
 
@@ -286,7 +251,7 @@ NTSTATUS CallFunctionViaThreadHijacking(ThreadHijack_* Params)
         return STATUS_INVALID_PARAMETER;
     }
 
-    ntStatus = PsLookupThreadByThreadId((HANDLE)Params->threadId, &pThread);
+    ntStatus = PsLookupThreadByThreadId((HANDLE)Params->thread_id, &pThread);
     if (!NT_SUCCESS(ntStatus))
     {
         ObDereferenceObject(pProcess);
@@ -313,7 +278,7 @@ NTSTATUS CallFunctionViaThreadHijacking(ThreadHijack_* Params)
     }
 
     CONTEXT threadContext = { 0 };
-    threadContext.ContextFlags = CONTEXT_FULL;
+    threadContext.ContextFlags = CONTEXT_ALL;
 
     ntStatus = GetThreadContext(pThread, &threadContext);
     if (!NT_SUCCESS(ntStatus))
@@ -325,7 +290,7 @@ NTSTATUS CallFunctionViaThreadHijacking(ThreadHijack_* Params)
         return ntStatus;
     }
 
-    threadContext.Rip = (ULONGLONG)Params->startAddress;
+    threadContext.Rip = (ULONGLONG)Params->start_address;
 
     ntStatus = SetThreadContext(pThread, &threadContext);
     if (!NT_SUCCESS(ntStatus))
@@ -345,11 +310,6 @@ NTSTATUS CallFunctionViaThreadHijacking(ThreadHijack_* Params)
         ObDereferenceObject(pProcess);
         return ntStatus;
     }
-
-    LARGE_INTEGER timeout;
-    timeout.QuadPart = -1000000; // 100ms
-    KeDelayExecutionThread(KernelMode, FALSE, &timeout);
-
 
     KeLeaveCriticalRegion();
     ObDereferenceObject(pThread);

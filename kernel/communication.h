@@ -12,46 +12,48 @@
 #define IOCTL_PROTECT_MEMORY IOCTL_CODE(4)
 #define IOCTL_HIJACK_THREAD IOCTL_CODE(5)
 
-struct VirtualAlloc_ {
-	ULONG processId;
-	PVOID* baseAddress;
-	SIZE_T* RegionSize;
-	ULONG allocationType;
-	ULONG ProtectionType;
-};
-
-struct VirtualFree_ {
-	ULONG processId;
-	PVOID* baseAddress;
-	SIZE_T* RegionSize;
-	ULONG FreeType;
-};
-
-struct ReadWriteVirtual_
+struct virtual_alloc_t
 {
-	ULONG processId;
-	PVOID address;
-	PVOID buffer;
-	SIZE_T size;
-	enum eflag
-	{
-		read,
-		write
-	}flag;
+	std::uint32_t process_id;
+	void** base_address;
+	size_t* region_size;
+	std::uint32_t allocation_type;
+	std::uint32_t protection_type;
 };
 
-struct VirtualProtect_ {
-	ULONG processId;
-	PVOID* baseAddress;
-	SIZE_T* RegionSize;
-	ULONG newProtection;
-	PULONG oldProtection;
+struct virtual_free_t
+{
+	std::uint32_t process_id;
+	void** base_address;
+	size_t* region_size;
+	std::uint32_t free_type;
 };
 
-struct ThreadHijack_ {
-	ULONG processId;
-	ULONG threadId;
-	PVOID startAddress;
+struct read_write_t
+{
+	enum class flag_t { read, write };
+
+	std::uint32_t process_id;
+	void* address;
+	void* buffer;
+	size_t size;
+	flag_t flag;
+};
+
+struct virtual_protect_t
+{
+	std::uint32_t process_id;
+	void** base_address;
+	size_t* region_size;
+	std::uint32_t new_protection;
+	std::uint32_t* old_protection;
+};
+
+struct thread_hijack_t
+{
+	std::uint32_t process_id;
+	std::uint32_t thread_id;
+	void* start_address;
 };
 
 #endif

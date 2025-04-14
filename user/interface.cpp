@@ -2,19 +2,20 @@
 #include <stdexcept>
 
 
-BOOLEAN CDriver::Attach(const wchar_t* processName)
+bool Interface::attach(const std::wstring& process_name)
 {
-    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-    if (snapshot == INVALID_HANDLE_VALUE) {
-        return 0;
-    }
+    auto snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snapshot == INVALID_HANDLE_VALUE)
+        return false;
 
     PROCESSENTRY32W pe32{ sizeof(pe32) };
-    if (Process32FirstW(snapshot, &pe32)) {
-        do {
-            if (wcscmp(pe32.szExeFile, processName) == 0) {
-                CloseHandle(snapshot);
-                this->processPid = pe32.th32ProcessID;
+    if (Process32FirstW(snapshot, &pe32))
+    {
+        do
+        {
+            if (wcscmp(pe32.szExeFile, process_name.c_str()) == 0)
+            {
+                process_pid_ = pe32.th32ProcessID;
                 break;
             }
         } while (Process32NextW(snapshot, &pe32));
@@ -22,78 +23,174 @@ BOOLEAN CDriver::Attach(const wchar_t* processName)
 
     CloseHandle(snapshot);
 
-    if (!this->processPid)
-        return FALSE;
+    if (!process_pid_)
+        return false;
 
-    this->deviceHandle = CreateFileW(deviceName, GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (deviceHandle == INVALID_HANDLE_VALUE) {
-        return FALSE;
-    }
+    device_handle_ = CreateFileW(device_name_,
+        GENERIC_READ | GENERIC_WRITE,
+        0, nullptr,
+        OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL,
+        nullptr);
 
-    this->attached = true;
-    return this->attached;
-}
-BOOLEAN CDriver::Detach()
-{
-    if (this->attached || this->deviceHandle)
+    if (device_handle_ == INVALID_HANDLE_VALUE)
     {
-        CloseHandle(this->deviceHandle);
-        this->deviceHandle = 0;
-        this->processPid = 0;
-        attached = false;
-        return attached;
+        process_pid_ = 0;
+        return false;
     }
-    else
-        return attached;
-}
 
-BOOLEAN CDriver::syscall(DWORD ioctlCode, LPVOID inBuffer, DWORD inBufferSize, LPVOID outBuffer, DWORD outBufferSize)
+    attached_ = true;
+    return true;
+}
+bool Interface::detach()
 {
-    DWORD bytesReturned = 0;
-    BOOL success = DeviceIoControl(this->deviceHandle, ioctlCode, inBuffer, inBufferSize, outBuffer, outBufferSize, &bytesReturned, nullptr);
-    return success != FALSE;
+    if (!attached_ || !device_handle_)
+        return false;
+
+    CloseHandle(device_handle_);
+    device_handle_ = nullptr;
+    process_pid_ = 0;
+    attached_ = false;
+    return true;
 }
 
-BOOLEAN CDriver::VirtualAllocEx(PVOID* baseAddress, SIZE_T* regionSize, ULONG allocationType, ULONG protectionType) {
-    VirtualAlloc_ params = { this->processPid, baseAddress, regionSize, allocationType, protectionType };
-    return syscall(IOCTL_ALLOCATE_MEMORY, &params, sizeof(params), &params, sizeof(params));
+bool Interface::syscall(std::uint32_t ioctl_code, void* in_buffer,
+    std::uint32_t in_buffer_size, void* out_buffer,
+    std::uint32_t out_buffer_size)
+{
+    DWORD bytes_returned = 0;
+    return DeviceIoControl(device_handle_,
+        ioctl_code,
+        in_buffer,
+        in_buffer_size,
+        out_buffer,
+        out_buffer_size,
+        &bytes_returned,
+        nullptr) != FALSE;
 }
 
-BOOLEAN CDriver::VirtualFreeEx(PVOID* baseAddress, SIZE_T* regionSize, ULONG freeType) {
-    VirtualFree_ params = { this->processPid, baseAddress, regionSize, freeType };
-    return syscall(IOCTL_FREE_MEMORY, &params, sizeof(params), &params, sizeof(params));
+bool Interface::virtual_alloc(void** base_address, std::size_t* region_size,
+    std::uint32_t allocation_type, std::uint32_t protection_type)
+{
+    struct virtual_alloc_t
+    {
+        std::uint32_t process_id;
+        void** base_address;
+        size_t* region_size;
+        std::uint32_t allocation_type;
+        std::uint32_t protection_type;
+    };
+
+    virtual_alloc_t params{ process_pid_, base_address, region_size,
+                          allocation_type, protection_type };
+
+    static constexpr std::uint32_t IOCTL_ALLOCATE_MEMORY = IOCTL_CODE(1);
+    return syscall(IOCTL_ALLOCATE_MEMORY, &params, sizeof(params),
+        &params, sizeof(params));
 }
 
-BOOLEAN CDriver::ReadProcessMemory(PVOID address, PVOID buffer, SIZE_T size) {
-    ReadWriteVirtual_ params = { this->processPid, address, buffer, size, ReadWriteVirtual_::read };
-    return syscall(IOCTL_READ_WRITE_MEMORY, &params, sizeof(params), &params, sizeof(params));
+bool Interface::virtual_free(void** base_address, std::size_t* region_size,
+    std::uint32_t free_type)
+{
+    struct virtual_free_t
+    {
+        std::uint32_t process_id;
+        void** base_address;
+        size_t* region_size;
+        std::uint32_t free_type;
+    };
+
+    virtual_free_t params{ process_pid_, base_address, region_size, free_type };
+    static constexpr std::uint32_t IOCTL_FREE_MEMORY = IOCTL_CODE(2);
+    return syscall(IOCTL_FREE_MEMORY, &params, sizeof(params),
+        &params, sizeof(params));
 }
 
-BOOLEAN CDriver::WriteProcessMemory(PVOID address, PVOID buffer, SIZE_T size) {
-    ReadWriteVirtual_ params = { this->processPid, address, buffer, size, ReadWriteVirtual_::write };
-    return syscall(IOCTL_READ_WRITE_MEMORY, &params, sizeof(params), &params, sizeof(params));
+bool Interface::read_memory(void* address, void* buffer, std::size_t size)
+{
+    struct read_write_t
+    {
+        enum class flag_t { read, write };
+
+        std::uint32_t process_id;
+        void* address;
+        void* buffer;
+        size_t size;
+        flag_t flag;
+    };
+
+    read_write_t params{ process_pid_, address, buffer, size,
+                       read_write_t::flag_t::read };
+
+    static constexpr std::uint32_t IOCTL_READ_WRITE_MEMORY = IOCTL_CODE(3);
+    return syscall(IOCTL_READ_WRITE_MEMORY, &params, sizeof(params),
+        &params, sizeof(params));
 }
 
-BOOLEAN CDriver::VirtualProtectEx(PVOID* baseAddress, SIZE_T* regionSize, ULONG newProtection, PULONG oldProtection) {
-    VirtualProtect_ params = { this->processPid, baseAddress, regionSize, newProtection, oldProtection };
-    return syscall(IOCTL_PROTECT_MEMORY, &params, sizeof(params), &params, sizeof(params));
+bool Interface::write_memory(void* address, void* buffer, std::size_t size)
+{
+    struct read_write_t
+    {
+        enum class flag_t { read, write };
+
+        std::uint32_t process_id;
+        void* address;
+        void* buffer;
+        size_t size;
+        flag_t flag;
+    };
+
+    read_write_t params{ process_pid_, address, buffer, size,
+                       read_write_t::flag_t::write };
+
+    static constexpr std::uint32_t IOCTL_READ_WRITE_MEMORY = IOCTL_CODE(3);
+    return syscall(IOCTL_READ_WRITE_MEMORY, &params, sizeof(params),
+        &params, sizeof(params));
 }
 
-BOOLEAN CDriver::CreateRemoteThread(PVOID startAddress) {
-    ThreadHijack_ params = { this->processPid, NULL, startAddress };
+bool Interface::virtual_protect(void** base_address, std::size_t* region_size,
+    std::uint32_t new_protection, std::uint32_t* old_protection)
+{
+    struct virtual_protect_t
+    {
+        std::uint32_t process_id;
+        void** base_address;
+        size_t* region_size;
+        std::uint32_t new_protection;
+        std::uint32_t* old_protection;
+    };
 
-    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
-    if (snapshot == INVALID_HANDLE_VALUE) {
-        return FALSE;
-    }
+    virtual_protect_t params{ process_pid_, base_address, region_size,
+                            new_protection, old_protection };
+
+    static constexpr std::uint32_t IOCTL_PROTECT_MEMORY = IOCTL_CODE(4);
+    return syscall(IOCTL_PROTECT_MEMORY, &params, sizeof(params),
+        &params, sizeof(params));
+}
+
+bool Interface::create_remote_thread(void* start_address)
+{
+    struct thread_hijack_t
+    {
+        std::uint32_t process_id;
+        std::uint32_t thread_id;
+        void* start_address;
+    };
+
+    thread_hijack_t params{ process_pid_, 0, start_address };
+
+    auto snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+    if (snapshot == INVALID_HANDLE_VALUE)
+        return false;
 
     THREADENTRY32 te32{ sizeof(te32) };
-    if (Thread32First(snapshot, &te32)) {
-        do {
-            if (te32.th32OwnerProcessID == this->processPid) {
-                CloseHandle(snapshot);
-                params.threadId = te32.th32ThreadID;
-                
+    if (Thread32First(snapshot, &te32))
+    {
+        do
+        {
+            if (te32.th32OwnerProcessID == process_pid_)
+            {
+                params.thread_id = te32.th32ThreadID;
                 break;
             }
         } while (Thread32Next(snapshot, &te32));
@@ -101,6 +198,7 @@ BOOLEAN CDriver::CreateRemoteThread(PVOID startAddress) {
 
     CloseHandle(snapshot);
 
- 
-    return syscall(IOCTL_HIJACK_THREAD, &params, sizeof(params), &params, sizeof(params));
+    static constexpr std::uint32_t IOCTL_HIJACK_THREAD = IOCTL_CODE(5);
+    return syscall(IOCTL_HIJACK_THREAD, &params, sizeof(params),
+        &params, sizeof(params));
 }
